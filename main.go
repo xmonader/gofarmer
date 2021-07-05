@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 
+	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
@@ -154,6 +155,8 @@ func main() {
 
 	}
 	myWindow.SetContent(tabs)
+	myWindow.Resize(fyne.NewSize(600, 300))
+
 	myWindow.ShowAndRun()
 }
 
