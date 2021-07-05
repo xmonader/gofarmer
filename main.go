@@ -16,13 +16,10 @@ import (
 	"fyne.io/fyne/v2/widget"
 	"github.com/mitchellh/go-homedir"
 	"github.com/pkg/errors"
-	"github.com/threefoldtech/tfexplorer"
 	"github.com/threefoldtech/tfexplorer/client"
 	"github.com/threefoldtech/tfexplorer/models/generated/directory"
 	"github.com/threefoldtech/tfexplorer/models/generated/phonebook"
 	"github.com/threefoldtech/tfexplorer/schema"
-	"github.com/threefoldtech/zos/pkg/identity"
-	"github.com/threefoldtech/zos/pkg/versioned"
 )
 
 var (
@@ -30,13 +27,13 @@ var (
 	explorersNames = []string{"Mainnet", "Testnet", "Devnet"}
 	explorersUrls  = map[string]string{"Mainnet": "https://explorer.grid.tf", "Testnet": "https://explorer.testnet.grid.tf", "Devnet": "https://explorer.devnet.grid.tf"}
 	// SeedVersion1 (binary seed)
-	SeedVersion1 = versioned.MustParse("1.0.0")
+	SeedVersion1 = MustParse("1.0.0")
 	// SeedVersion11 (json mnemonic)
-	SeedVersion11 = versioned.MustParse("1.1.0")
+	SeedVersion11 = MustParse("1.1.0")
 	// SeedVersionLatest link to latest seed version
 	SeedVersionLatest     = SeedVersion11
 	threebotId        int = 0
-	userid                = &tfexplorer.UserIdentity{}
+	userid                = &UserIdentity{}
 )
 
 func main() {
@@ -213,15 +210,15 @@ func registerFarm(expclient *client.Client, name, email, tftAddress string, tid 
 	return farm, nil
 }
 
-func generateID(url, name, email, seedPath string) (user phonebook.User, ui *tfexplorer.UserIdentity, err error) {
-	ui = &tfexplorer.UserIdentity{}
+func generateID(url, name, email, seedPath string) (user phonebook.User, ui *UserIdentity, err error) {
+	ui = &UserIdentity{}
 
-	k, err := identity.GenerateKeyPair()
+	k, err := GenerateKeyPair()
 	if err != nil {
 		return phonebook.User{}, ui, err
 	}
 
-	ui = tfexplorer.NewUserIdentity(k, 0)
+	ui = NewUserIdentity(k, 0)
 
 	user = phonebook.User{
 		Name:        name,
@@ -279,7 +276,7 @@ func getSeedPath() (location string, err error) {
 
 // LoadSeed from path
 func LoadSeedData(path string) (string, int, error) {
-	version, seed, err := versioned.ReadFile(path)
+	version, seed, err := ReadFile(path)
 
 	if version.EQ(SeedVersion11) {
 		// it means we read json data instead of the secret
