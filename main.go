@@ -16,10 +16,6 @@ import (
 	"fyne.io/fyne/v2/widget"
 	"github.com/mitchellh/go-homedir"
 	"github.com/pkg/errors"
-	"github.com/threefoldtech/tfexplorer/client"
-	"github.com/threefoldtech/tfexplorer/models/generated/directory"
-	"github.com/threefoldtech/tfexplorer/models/generated/phonebook"
-	"github.com/threefoldtech/tfexplorer/schema"
 )
 
 var (
@@ -37,7 +33,7 @@ var (
 )
 
 func main() {
-	var expclient *client.Client
+	var expclient *Client
 
 	myApp := app.New()
 	myWindow := myApp.NewWindow("Go Farmer!!")
@@ -139,8 +135,8 @@ func main() {
 	if _, err = os.Stat(seedpath); !os.IsNotExist(err) {
 		userid.Load(seedpath)
 		threebotId = int(userid.ThreebotID)
-		if expclient, err = client.NewClient(explorerUrl, userid); err == nil {
-			if u, err := expclient.Phonebook.Get(schema.ID(userid.ThreebotID)); err == nil {
+		if expclient, err = NewClient(explorerUrl, userid); err == nil {
+			if u, err := expclient.Phonebook.Get(userid.ThreebotID); err == nil {
 				wordsInput.Text = userid.Mnemonic
 				emailInput.Text = u.Email
 				threebotNameInput.Text = u.Name
@@ -189,14 +185,14 @@ func validateData(name, email, farm, tftAddress string) []string {
 	return errs
 
 }
-func registerFarm(expclient *client.Client, name, email, tftAddress string, tid int) (directory.Farm, error) {
-	addresses := make([]directory.WalletAddress, 1)
-	address := directory.WalletAddress{Address: tftAddress, Asset: "TFT"}
+func registerFarm(expclient *Client, name, email, tftAddress string, tid int) (Farm, error) {
+	addresses := make([]WalletAddress, 1)
+	address := WalletAddress{Address: tftAddress, Asset: "TFT"}
 	addresses = append(addresses, address)
-	farm := directory.Farm{
+	farm := Farm{
 		Name:            name,
 		ThreebotID:      int64(tid),
-		Email:           schema.Email(email),
+		Email:           email,
 		WalletAddresses: addresses,
 	}
 
@@ -210,24 +206,24 @@ func registerFarm(expclient *client.Client, name, email, tftAddress string, tid 
 	return farm, nil
 }
 
-func generateID(url, name, email, seedPath string) (user phonebook.User, ui *UserIdentity, err error) {
+func generateID(url, name, email, seedPath string) (user User, ui *UserIdentity, err error) {
 	ui = &UserIdentity{}
 
 	k, err := GenerateKeyPair()
 	if err != nil {
-		return phonebook.User{}, ui, err
+		return User{}, ui, err
 	}
 
 	ui = NewUserIdentity(k, 0)
 
-	user = phonebook.User{
+	user = User{
 		Name:        name,
 		Email:       email,
 		Pubkey:      hex.EncodeToString(ui.Key().PublicKey),
 		Description: "",
 	}
 
-	httpClient, err := client.NewClient(url, ui)
+	httpClient, err := NewClient(url, ui)
 	if err != nil {
 		return user, ui, err
 	}
@@ -238,7 +234,7 @@ func generateID(url, name, email, seedPath string) (user phonebook.User, ui *Use
 	}
 
 	// Update UserData with created id
-	ui.ThreebotID = uint64(id)
+	ui.ThreebotID = int64(id)
 
 	// Saving new seed struct
 
