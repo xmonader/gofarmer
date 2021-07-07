@@ -14,7 +14,6 @@ import (
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
-	"github.com/mitchellh/go-homedir"
 	"github.com/pkg/errors"
 )
 
@@ -252,20 +251,14 @@ func generateID(url, name, email, seedPath string) (user User, ui *UserIdentity,
 
 func getSeedPath() (location string, err error) {
 	// Get home directory for current user
-	dir, err := homedir.Dir()
-	if err != nil {
-		return "", errors.Wrap(err, "Cannot get current user home directory")
-	}
-	if dir == "" {
-		return "", errors.Wrap(err, "Cannot get current user home directory")
-	}
-	expandedDir, err := homedir.Expand(dir)
+
+	configdDir, err := os.UserConfigDir()
 	if err != nil {
 		return "", err
 	}
-	os.MkdirAll(expandedDir, 0755)
+	// os.MkdirAll(expandedDir, 0755)
 
-	path := filepath.Join(expandedDir, ".config", "tffarmer.seed")
+	path := filepath.Join(configdDir, "tffarmer.seed")
 	return path, nil
 
 }
