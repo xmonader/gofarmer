@@ -13,6 +13,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
 	"github.com/pkg/errors"
 )
@@ -84,22 +85,36 @@ func main() {
 					os.Exit(1)
 				}
 				errorsIdentityLabel.Text = ""
-				_, ui, err := generateID(explorerUrl, threebotNameInput.Text, emailInput.Text, seedpath)
-				infoIdentityLabel.Text = fmt.Sprintf("your 3Bot ID is %d: and seed is saved at %s", ui.ThreebotID, seedpath)
+				if _, err = os.Stat(seedpath); !os.IsNotExist(err) {
+					dialog.ShowConfirm("Overwriting your 3Bot Identity", "Are you sure you want to  overwrite the existing identity? Make sure to backup your seed file.?\n\n", func(b bool) {
+						if b {
+							_, ui, err := generateID(explorerUrl, threebotNameInput.Text, emailInput.Text, seedpath)
+							if err != nil {
+								errorsIdentityLabel.Text = fmt.Sprintf("Error while generating identity %s", err)
+								dialog.ShowError(fmt.Errorf(errorsIdentityLabel.Text), myWindow)
+
+							} else {
+								infoIdentityLabel.Text = fmt.Sprintf("your 3Bot ID is %d: and seed is saved at %s", ui.ThreebotID, seedpath)
+								dialog.ShowInformation("Success", infoIdentityLabel.Text, myWindow)
+							}
+
+						}
+
+					}, myWindow)
+
+				}
 
 			}
 
 			log.Println(errs)
-			log.Println("Form submitted:")
-			log.Println("multiline:")
-			// myWindow.Close()
+
 		},
 	}
 
 	formFarm := &widget.Form{
 		Items: []*widget.FormItem{ // we can specify items in the constructor
 			{Text: "Farm Name", Widget: farmNameInput},
-			{Text: "TFT Address", Widget: tftAddressInput},
+			{Text: "TFT Address", Widget: tftAddressInput, HintText: "valid TFT address (56 characters)"},
 			{Widget: infoFarmLabel},
 			{Widget: errorsFarmLabel},
 		},
@@ -110,7 +125,12 @@ func main() {
 			errorsFarmLabel.Text = strings.Join(errs, "\n")
 			if len(errs) == 0 && threebotId > 0 {
 				if farm, err := registerFarm(expclient, farmNameInput.Text, emailInput.Text, tftAddressInput.Text, threebotId); err == nil {
+
 					infoFarmLabel.Text = fmt.Sprintf("farm with ID %d is created", farm.ID)
+					dialog.ShowInformation("Farm Registered!", infoFarmLabel.Text, myWindow)
+				} else {
+					errorsFarmLabel.Text = fmt.Sprintf("Error while registering farm %s", err)
+					dialog.ShowError(fmt.Errorf(errorsFarmLabel.Text), myWindow)
 				}
 				log.Println(errs)
 				// log.Println("Form submitted:")
@@ -180,6 +200,10 @@ func validateData(name, email, farm, tftAddress string) []string {
 	}
 	if !isAlphaNumeric(farm) {
 		errs = append(errs, "farm needs to be alphanumeric")
+	}
+
+	if len(tftAddress) != 56 {
+		errs = append(errs, "invalid tft wallet address")
 	}
 	return errs
 
