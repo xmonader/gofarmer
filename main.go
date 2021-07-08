@@ -13,16 +13,9 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
-	"github.com/mitchellh/go-homedir"
 	"github.com/pkg/errors"
-	"github.com/threefoldtech/tfexplorer"
-	"github.com/threefoldtech/tfexplorer/client"
-	"github.com/threefoldtech/tfexplorer/models/generated/directory"
-	"github.com/threefoldtech/tfexplorer/models/generated/phonebook"
-	"github.com/threefoldtech/tfexplorer/schema"
-	"github.com/threefoldtech/zos/pkg/identity"
-	"github.com/threefoldtech/zos/pkg/versioned"
 )
 
 var (
@@ -30,17 +23,17 @@ var (
 	explorersNames = []string{"Mainnet", "Testnet", "Devnet"}
 	explorersUrls  = map[string]string{"Mainnet": "https://explorer.grid.tf", "Testnet": "https://explorer.testnet.grid.tf", "Devnet": "https://explorer.devnet.grid.tf"}
 	// SeedVersion1 (binary seed)
-	SeedVersion1 = versioned.MustParse("1.0.0")
+	SeedVersion1 = MustParse("1.0.0")
 	// SeedVersion11 (json mnemonic)
-	SeedVersion11 = versioned.MustParse("1.1.0")
+	SeedVersion11 = MustParse("1.1.0")
 	// SeedVersionLatest link to latest seed version
 	SeedVersionLatest     = SeedVersion11
 	threebotId        int = 0
-	userid                = &tfexplorer.UserIdentity{}
+	userid                = &UserIdentity{}
 )
 
 func main() {
-	var expclient *client.Client
+	var expclient *Client
 
 	myApp := app.New()
 	myWindow := myApp.NewWindow("Go Farmer!!")
@@ -92,22 +85,36 @@ func main() {
 					os.Exit(1)
 				}
 				errorsIdentityLabel.Text = ""
-				_, ui, err := generateID(explorerUrl, threebotNameInput.Text, emailInput.Text, seedpath)
-				infoIdentityLabel.Text = fmt.Sprintf("your 3Bot ID is %d: and seed is saved at %s", ui.ThreebotID, seedpath)
+				if _, err = os.Stat(seedpath); !os.IsNotExist(err) {
+					dialog.ShowConfirm("Overwriting your 3Bot Identity", "Are you sure you want to  overwrite the existing identity? Make sure to backup your seed file.?\n\n", func(b bool) {
+						if b {
+							_, ui, err := generateID(explorerUrl, threebotNameInput.Text, emailInput.Text, seedpath)
+							if err != nil {
+								errorsIdentityLabel.Text = fmt.Sprintf("Error while generating identity %s", err)
+								dialog.ShowError(fmt.Errorf(errorsIdentityLabel.Text), myWindow)
+
+							} else {
+								infoIdentityLabel.Text = fmt.Sprintf("your 3Bot ID is %d: and seed is saved at %s", ui.ThreebotID, seedpath)
+								dialog.ShowInformation("Success", infoIdentityLabel.Text, myWindow)
+							}
+
+						}
+
+					}, myWindow)
+
+				}
 
 			}
 
 			log.Println(errs)
-			log.Println("Form submitted:")
-			log.Println("multiline:")
-			// myWindow.Close()
+
 		},
 	}
 
 	formFarm := &widget.Form{
 		Items: []*widget.FormItem{ // we can specify items in the constructor
 			{Text: "Farm Name", Widget: farmNameInput},
-			{Text: "TFT Address", Widget: tftAddressInput},
+			{Text: "TFT Address", Widget: tftAddressInput, HintText: "valid TFT address (56 characters)"},
 			{Widget: infoFarmLabel},
 			{Widget: errorsFarmLabel},
 		},
@@ -118,7 +125,12 @@ func main() {
 			errorsFarmLabel.Text = strings.Join(errs, "\n")
 			if len(errs) == 0 && threebotId > 0 {
 				if farm, err := registerFarm(expclient, farmNameInput.Text, emailInput.Text, tftAddressInput.Text, threebotId); err == nil {
+
 					infoFarmLabel.Text = fmt.Sprintf("farm with ID %d is created", farm.ID)
+					dialog.ShowInformation("Farm Registered!", infoFarmLabel.Text, myWindow)
+				} else {
+					errorsFarmLabel.Text = fmt.Sprintf("Error while registering farm %s", err)
+					dialog.ShowError(fmt.Errorf(errorsFarmLabel.Text), myWindow)
 				}
 				log.Println(errs)
 				// log.Println("Form submitted:")
@@ -142,8 +154,8 @@ func main() {
 	if _, err = os.Stat(seedpath); !os.IsNotExist(err) {
 		userid.Load(seedpath)
 		threebotId = int(userid.ThreebotID)
-		if expclient, err = client.NewClient(explorerUrl, userid); err == nil {
-			if u, err := expclient.Phonebook.Get(schema.ID(userid.ThreebotID)); err == nil {
+		if expclient, err = NewClient(explorerUrl, userid); err == nil {
+			if u, err := expclient.Phonebook.Get(userid.ThreebotID); err == nil {
 				wordsInput.Text = userid.Mnemonic
 				emailInput.Text = u.Email
 				threebotNameInput.Text = u.Name
@@ -189,17 +201,21 @@ func validateData(name, email, farm, tftAddress string) []string {
 	if !isAlphaNumeric(farm) {
 		errs = append(errs, "farm needs to be alphanumeric")
 	}
+
+	if len(tftAddress) != 56 {
+		errs = append(errs, "invalid tft wallet address")
+	}
 	return errs
 
 }
-func registerFarm(expclient *client.Client, name, email, tftAddress string, tid int) (directory.Farm, error) {
-	addresses := make([]directory.WalletAddress, 1)
-	address := directory.WalletAddress{Address: tftAddress, Asset: "TFT"}
+func registerFarm(expclient *Client, name, email, tftAddress string, tid int) (Farm, error) {
+	addresses := make([]WalletAddress, 1)
+	address := WalletAddress{Address: tftAddress, Asset: "TFT"}
 	addresses = append(addresses, address)
-	farm := directory.Farm{
+	farm := Farm{
 		Name:            name,
 		ThreebotID:      int64(tid),
-		Email:           schema.Email(email),
+		Email:           email,
 		WalletAddresses: addresses,
 	}
 
@@ -213,24 +229,24 @@ func registerFarm(expclient *client.Client, name, email, tftAddress string, tid 
 	return farm, nil
 }
 
-func generateID(url, name, email, seedPath string) (user phonebook.User, ui *tfexplorer.UserIdentity, err error) {
-	ui = &tfexplorer.UserIdentity{}
+func generateID(url, name, email, seedPath string) (user User, ui *UserIdentity, err error) {
+	ui = &UserIdentity{}
 
-	k, err := identity.GenerateKeyPair()
+	k, err := GenerateKeyPair()
 	if err != nil {
-		return phonebook.User{}, ui, err
+		return User{}, ui, err
 	}
 
-	ui = tfexplorer.NewUserIdentity(k, 0)
+	ui = NewUserIdentity(k, 0)
 
-	user = phonebook.User{
+	user = User{
 		Name:        name,
 		Email:       email,
 		Pubkey:      hex.EncodeToString(ui.Key().PublicKey),
 		Description: "",
 	}
 
-	httpClient, err := client.NewClient(url, ui)
+	httpClient, err := NewClient(url, ui)
 	if err != nil {
 		return user, ui, err
 	}
@@ -241,7 +257,7 @@ func generateID(url, name, email, seedPath string) (user phonebook.User, ui *tfe
 	}
 
 	// Update UserData with created id
-	ui.ThreebotID = uint64(id)
+	ui.ThreebotID = int64(id)
 
 	// Saving new seed struct
 
@@ -259,27 +275,21 @@ func generateID(url, name, email, seedPath string) (user phonebook.User, ui *tfe
 
 func getSeedPath() (location string, err error) {
 	// Get home directory for current user
-	dir, err := homedir.Dir()
-	if err != nil {
-		return "", errors.Wrap(err, "Cannot get current user home directory")
-	}
-	if dir == "" {
-		return "", errors.Wrap(err, "Cannot get current user home directory")
-	}
-	expandedDir, err := homedir.Expand(dir)
+
+	configdDir, err := os.UserConfigDir()
 	if err != nil {
 		return "", err
 	}
-	os.MkdirAll(expandedDir, 0755)
+	// os.MkdirAll(expandedDir, 0755)
 
-	path := filepath.Join(expandedDir, ".config", "tffarmer.seed")
+	path := filepath.Join(configdDir, "tffarmer.seed")
 	return path, nil
 
 }
 
 // LoadSeed from path
 func LoadSeedData(path string) (string, int, error) {
-	version, seed, err := versioned.ReadFile(path)
+	version, seed, err := ReadFile(path)
 
 	if version.EQ(SeedVersion11) {
 		// it means we read json data instead of the secret
