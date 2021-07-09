@@ -84,24 +84,32 @@ func main() {
 					println(err)
 					os.Exit(1)
 				}
+				doGen := func() {
+					_, ui, err := generateID(explorerUrl, threebotNameInput.Text, emailInput.Text, seedpath)
+					if err != nil {
+						fmt.Println(err)
+						fmt.Println(ui)
+						errorsIdentityLabel.Text = fmt.Sprintf("Error while generating identity %s", err)
+						dialog.ShowError(fmt.Errorf(errorsIdentityLabel.Text), myWindow)
+
+					} else {
+						infoIdentityLabel.Text = fmt.Sprintf("your 3Bot ID is %d: and seed is saved at %s", ui.ThreebotID, seedpath)
+						dialog.ShowInformation("Success", infoIdentityLabel.Text, myWindow)
+						threebotId = int(ui.ThreebotID)
+					}
+				}
 				errorsIdentityLabel.Text = ""
 				if _, err = os.Stat(seedpath); !os.IsNotExist(err) {
 					dialog.ShowConfirm("Overwriting your 3Bot Identity", "Are you sure you want to  overwrite the existing identity? Make sure to backup your seed file.?\n\n", func(b bool) {
 						if b {
-							_, ui, err := generateID(explorerUrl, threebotNameInput.Text, emailInput.Text, seedpath)
-							if err != nil {
-								errorsIdentityLabel.Text = fmt.Sprintf("Error while generating identity %s", err)
-								dialog.ShowError(fmt.Errorf(errorsIdentityLabel.Text), myWindow)
 
-							} else {
-								infoIdentityLabel.Text = fmt.Sprintf("your 3Bot ID is %d: and seed is saved at %s", ui.ThreebotID, seedpath)
-								dialog.ShowInformation("Success", infoIdentityLabel.Text, myWindow)
-								threebotId = int(ui.ThreebotID)
-							}
-
+							doGen()
 						}
 
 					}, myWindow)
+
+				} else {
+					doGen()
 
 				}
 
@@ -184,7 +192,7 @@ func validateIdentityData(name, email string) []string {
 	if email == "" || !strings.Contains(email, "@") {
 		errs = append(errs, "email is required and needs to be a valid string")
 	}
-
+	fmt.Println("validation errs: ", errs)
 	return errs
 
 }
@@ -231,6 +239,7 @@ func registerFarm(expclient *Client, name, email, tftAddress string, tid int) (F
 }
 
 func generateID(url, name, email, seedPath string) (user User, ui *UserIdentity, err error) {
+	fmt.Println("caleeeed")
 	ui = &UserIdentity{}
 
 	k, err := GenerateKeyPair()
@@ -248,12 +257,14 @@ func generateID(url, name, email, seedPath string) (user User, ui *UserIdentity,
 	}
 
 	httpClient, err := NewClient(url, ui)
+
 	if err != nil {
 		return user, ui, err
 	}
 
 	id, err := httpClient.Phonebook.Create(user)
 	if err != nil {
+		fmt.Println(err)
 		return user, ui, errors.Wrap(err, "failed to register user")
 	}
 
