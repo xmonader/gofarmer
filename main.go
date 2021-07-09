@@ -96,6 +96,11 @@ func main() {
 						infoIdentityLabel.Text = fmt.Sprintf("your 3Bot ID is %d: and seed is saved at %s", ui.ThreebotID, seedpath)
 						dialog.ShowInformation("Success", infoIdentityLabel.Text, myWindow)
 						threebotId = int(ui.ThreebotID)
+						expclient, err = NewClient(explorerUrl, ui)
+						if err != nil {
+							fmt.Println("failed to get explorer client: ", err)
+							dialog.ShowError(fmt.Errorf("failed to get explorer client"), myWindow)
+						}
 					}
 				}
 				errorsIdentityLabel.Text = ""
@@ -170,6 +175,7 @@ func main() {
 				threebotNameInput.Text = u.Name
 			} else {
 
+				fmt.Println("failed to get explorer client: ", err)
 			}
 
 		}
