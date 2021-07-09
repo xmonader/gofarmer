@@ -96,6 +96,7 @@ func main() {
 							} else {
 								infoIdentityLabel.Text = fmt.Sprintf("your 3Bot ID is %d: and seed is saved at %s", ui.ThreebotID, seedpath)
 								dialog.ShowInformation("Success", infoIdentityLabel.Text, myWindow)
+								threebotId = int(ui.ThreebotID)
 							}
 
 						}
