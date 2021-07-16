@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/mail"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -76,7 +77,7 @@ func main() {
 		SubmitText: "Register your identity",
 		OnSubmit: func() { // optional, handle form submission
 			log.Println(threebotNameInput.Text, emailInput.Text, farmNameInput.Text, wordsInput.Text, tftAddressInput.Text)
-			errs := validateIdentityData(threebotNameInput.Text, emailInput.Text)
+			errs := validateIdentityData(threebotNameInput.Text, emailInput.Text, wordsInput.Text)
 			errorsIdentityLabel.Text = strings.Join(errs, "\n")
 			if len(errs) == 0 {
 				seedpath, err := getSeedPath()
@@ -85,7 +86,7 @@ func main() {
 					os.Exit(1)
 				}
 				doGen := func() {
-					_, ui, err := generateID(explorerUrl, threebotNameInput.Text, emailInput.Text, seedpath)
+					_, ui, err := generateID(explorerUrl, threebotNameInput.Text, emailInput.Text, seedpath, wordsInput.Text)
 					if err != nil {
 						fmt.Println(err)
 						fmt.Println(ui)
@@ -94,6 +95,8 @@ func main() {
 
 					} else {
 						infoIdentityLabel.Text = fmt.Sprintf("your 3Bot ID is %d: and seed is saved at %s", ui.ThreebotID, seedpath)
+						fmt.Println("menoms: ", ui.Mnemonic)
+						wordsInput.SetText(ui.Mnemonic)
 						dialog.ShowInformation("Success", infoIdentityLabel.Text, myWindow)
 						threebotId = int(ui.ThreebotID)
 						expclient, err = NewClient(explorerUrl, ui)
@@ -187,7 +190,7 @@ func main() {
 	myWindow.ShowAndRun()
 }
 
-func validateIdentityData(name, email string) []string {
+func validateIdentityData(name, email, words string) []string {
 	errs := make([]string, 0)
 	if name == "" {
 		errs = append(errs, "3bot name can't be empty")
@@ -197,12 +200,23 @@ func validateIdentityData(name, email string) []string {
 	}
 	if email == "" || !strings.Contains(email, "@") {
 		errs = append(errs, "email is required and needs to be a valid string")
+	}
+	if words != "" {
+		ui := UserIdentity{}
+		if err := ui.FromMnemonic(words); err != nil {
+			errs = append(errs, "words are invalid")
+
+		}
 	}
 	fmt.Println("validation errs: ", errs)
 	return errs
 
 }
 func validateData(name, email, farm, tftAddress string) []string {
+	name = strings.TrimSpace(name)
+	email = strings.TrimSpace(email)
+	tftAddress = strings.TrimSpace(tftAddress)
+	farm = strings.TrimSpace(farm)
 	errs := make([]string, 0)
 	if name == "" {
 		errs = append(errs, "3bot name can't be empty")
@@ -212,6 +226,9 @@ func validateData(name, email, farm, tftAddress string) []string {
 	}
 	if email == "" || !strings.Contains(email, "@") {
 		errs = append(errs, "email is required and needs to be a valid string")
+	}
+	if _, err := mail.ParseAddress(email); err != nil {
+		errs = append(errs, err.Error())
 	}
 	if !isAlphaNumeric(farm) {
 		errs = append(errs, "farm needs to be alphanumeric")
@@ -224,6 +241,9 @@ func validateData(name, email, farm, tftAddress string) []string {
 
 }
 func registerFarm(expclient *Client, name, email, tftAddress string, tid int) (Farm, error) {
+	name = strings.TrimSpace(name)
+	email = strings.TrimSpace(email)
+	tftAddress = strings.TrimSpace(tftAddress)
 	addresses := make([]WalletAddress, 1)
 	address := WalletAddress{Address: tftAddress, Asset: "TFT"}
 	addresses = append(addresses, address)
@@ -244,16 +264,33 @@ func registerFarm(expclient *Client, name, email, tftAddress string, tid int) (F
 	return farm, nil
 }
 
-func generateID(url, name, email, seedPath string) (user User, ui *UserIdentity, err error) {
-	fmt.Println("caleeeed")
+func generateID(url, name, email, seedPath, words string) (user User, ui *UserIdentity, err error) {
+	fmt.Println("generating against ", words, seedPath)
 	ui = &UserIdentity{}
+	if words != "" {
+		err := ui.FromMnemonic(words)
+		if err != nil {
+			return user, ui, err
+		}
 
-	k, err := GenerateKeyPair()
-	if err != nil {
-		return User{}, ui, err
+	} else {
+		// check if have the seed path already
+		if _, err = os.Stat(seedPath); !os.IsNotExist(err) {
+			err = ui.Load(seedPath)
+			if err != nil {
+				return User{}, ui, err
+			}
+		} else {
+			// no words and no seedpath, generate new
+			k, err := GenerateKeyPair()
+			if err != nil {
+				return User{}, ui, err
+			}
+
+			ui = NewUserIdentity(k, 0)
+		}
+
 	}
-
-	ui = NewUserIdentity(k, 0)
 
 	user = User{
 		Name:        name,
@@ -266,6 +303,21 @@ func generateID(url, name, email, seedPath string) (user User, ui *UserIdentity,
 
 	if err != nil {
 		return user, ui, err
+	}
+	// if current UI name, email and pubkey match the one in the explorer, then we don't need to register
+	eluser, elerr := httpClient.Phonebook.GetUserByNameOrEmail(name, email)
+	if elerr == nil {
+		// user exists already now we check against the publick key
+		if eluser.Pubkey == hex.EncodeToString(ui.Key().PublicKey) {
+			fmt.Println("user exists an matches explorer registered user pubkey")
+
+			user.ID = eluser.ID
+			ui.ThreebotID = int64(user.ID)
+			return user, ui, nil
+		} else {
+			return user, ui, fmt.Errorf("user already exists and its public key doesn't match the one on explorer")
+		}
+
 	}
 
 	id, err := httpClient.Phonebook.Create(user)
