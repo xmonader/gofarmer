@@ -463,6 +463,9 @@ type (
 	Phonebook interface {
 		Create(user User) (int64, error)
 		Get(id int64) (User, error)
+		GetUserByNameOrEmail(name, email string) (User, error)
+		UserExistsByNameOrEmail(name, email string) bool
+		UserHasSamePublicKey(u User, ident UserIdentity) bool
 	}
 
 	// Identity is used by the client to authenticate to the explorer API
@@ -811,6 +814,32 @@ func (p *httpPhonebook) List(name, email string, page *Pager) (output []User, er
 func (p *httpPhonebook) Get(id int64) (user User, err error) {
 	_, err = p.get(p.url("users", fmt.Sprint(id)), nil, &user, http.StatusOK)
 	return
+}
+
+func (p *httpPhonebook) GetUserByNameOrEmail(name, email string) (User, error) {
+	pager := Page(1, 5)
+	u := User{}
+	users_list, err := p.List(name, email, pager)
+	if err != nil {
+		return u, err
+	}
+	if len(users_list) == 0 {
+		return u, errors.New("user doesn't exist")
+	}
+	return users_list[0], nil
+
+}
+func (p *httpPhonebook) UserExistsByNameOrEmail(name, email string) bool {
+	_, err := p.GetUserByNameOrEmail(name, email)
+	if err != nil {
+		return true
+	}
+	return false
+
+}
+
+func (p *httpPhonebook) UserHasSamePublicKey(u User, ident UserIdentity) bool {
+	return hex.EncodeToString(ident.Key().PublicKey) == u.Pubkey
 }
 
 // Validate the signature of this message for the user, signature and message are hex encoded
