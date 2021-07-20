@@ -4,18 +4,14 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"log"
+	"math/rand"
 	"net/mail"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
-	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/app"
-	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/dialog"
-	"fyne.io/fyne/v2/widget"
 	"github.com/pkg/errors"
 )
 
@@ -33,162 +29,183 @@ var (
 	userid                = &UserIdentity{}
 )
 
-func main() {
-	var expclient *Client
+func randomString(length int) string {
+	rand.Seed(time.Now().UnixNano())
+	var bytes = make([]byte, length)
+	for i := 0; i < length; i++ {
+		bytes[i] = byte(rand.Intn(256))
+	}
+	return hex.EncodeToString(bytes)
+}
 
-	myApp := app.New()
-	myWindow := myApp.NewWindow("Go Farmer!!")
+func main() {
+	// var expclient *Client
 	explorerUrl, _ := explorersUrls["Mainnet"]
 
-	// threebotNameLabel := canvas.NewText("3Bot name", color.White)
-	threebotNameInput := widget.NewEntry()
-	emailInput := widget.NewEntry()
-
-	// nameContainer := container.NewHBox(threebotNameLabel, threebotNameInput, layout.NewSpacer())
-	//
-	// farmNameLabel := canvas.NewText("Farm Name", color.White)
-	farmNameInput := widget.NewEntry()
-	// farmContainer := container.NewHBox(farmNameLabel, farmNameInput, layout.NewSpacer())
-
-	// wordsLabel := canvas.NewText("Words", color.White)
-	wordsInput := widget.NewMultiLineEntry()
-	// wordsContainer := container.NewHBox(wordsLabel, wordsInput, layout.NewSpacer())
-
-	// tftAddressLabel := canvas.NewText("tftAddress", color.White)
-	tftAddressInput := widget.NewEntry()
-	// tftAddressContainer := container.NewHBox(tftAddressLabel, tftAddressInput, layout.NewSpacer())
-
-	// buttonRegister := widget.NewButton("Register Farm", func() {
-	// 	log.Println("tapped")
-	// })
-	errorsIdentityLabel := widget.NewLabel("")
-	errorsFarmLabel := widget.NewLabel("")
-	infoIdentityLabel := widget.NewLabel("")
-	infoFarmLabel := widget.NewLabel("")
-
-	formIdentity := &widget.Form{
-		Items: []*widget.FormItem{ // we can specify items in the constructor
-			{Text: "3Bot Name", Widget: threebotNameInput, HintText: "should end with .3bot"},
-			{Text: "Email", Widget: emailInput},
-			{Text: "Words", Widget: wordsInput, HintText: "leave empty to generate"},
-			{Widget: infoIdentityLabel},
-			{Widget: errorsIdentityLabel},
-		},
-		SubmitText: "Register your identity",
-		OnSubmit: func() { // optional, handle form submission
-			log.Println(threebotNameInput.Text, emailInput.Text, farmNameInput.Text, wordsInput.Text, tftAddressInput.Text)
-			errs := validateIdentityData(threebotNameInput.Text, emailInput.Text, wordsInput.Text)
-			errorsIdentityLabel.Text = strings.Join(errs, "\n")
-			if len(errs) == 0 {
-				seedpath, err := getSeedPath()
-				if err != nil {
-					println(err)
-					os.Exit(1)
-				}
-				doGen := func() {
-					_, ui, err := generateID(explorerUrl, threebotNameInput.Text, emailInput.Text, seedpath, wordsInput.Text)
-					if err != nil {
-						fmt.Println(err)
-						fmt.Println(ui)
-						errorsIdentityLabel.Text = fmt.Sprintf("Error while generating identity %s", err)
-						dialog.ShowError(fmt.Errorf(errorsIdentityLabel.Text), myWindow)
-
-					} else {
-						infoIdentityLabel.Text = fmt.Sprintf("your 3Bot ID is %d: and seed is saved at %s", ui.ThreebotID, seedpath)
-						fmt.Println("menoms: ", ui.Mnemonic)
-						wordsInput.SetText(ui.Mnemonic)
-						dialog.ShowInformation("Success", infoIdentityLabel.Text, myWindow)
-						threebotId = int(ui.ThreebotID)
-						expclient, err = NewClient(explorerUrl, ui)
-						if err != nil {
-							fmt.Println("failed to get explorer client: ", err)
-							dialog.ShowError(fmt.Errorf("failed to get explorer client"), myWindow)
-						}
-					}
-				}
-				errorsIdentityLabel.Text = ""
-				if _, err = os.Stat(seedpath); !os.IsNotExist(err) {
-					dialog.ShowConfirm("Overwriting your 3Bot Identity", "Are you sure you want to  overwrite the existing identity? Make sure to backup your seed file.?\n\n", func(b bool) {
-						if b {
-
-							doGen()
-						}
-
-					}, myWindow)
-
-				} else {
-					doGen()
-
-				}
-
-			}
-
-			log.Println(errs)
-
-		},
-	}
-
-	formFarm := &widget.Form{
-		Items: []*widget.FormItem{ // we can specify items in the constructor
-			{Text: "Farm Name", Widget: farmNameInput},
-			{Text: "TFT Address", Widget: tftAddressInput, HintText: "valid TFT address (56 characters)"},
-			{Widget: infoFarmLabel},
-			{Widget: errorsFarmLabel},
-		},
-		SubmitText: "Register your farm",
-		OnSubmit: func() { // optional, handle form submission
-			log.Println(threebotNameInput.Text, emailInput.Text, farmNameInput.Text, wordsInput.Text, tftAddressInput.Text)
-			errs := validateData(threebotNameInput.Text, emailInput.Text, farmNameInput.Text, tftAddressInput.Text)
-			errorsFarmLabel.Text = strings.Join(errs, "\n")
-			if len(errs) == 0 && threebotId > 0 {
-				if farm, err := registerFarm(expclient, farmNameInput.Text, emailInput.Text, tftAddressInput.Text, threebotId); err == nil {
-
-					infoFarmLabel.Text = fmt.Sprintf("farm with ID %d is created", farm.ID)
-					dialog.ShowInformation("Farm Registered!", infoFarmLabel.Text, myWindow)
-				} else {
-					errorsFarmLabel.Text = fmt.Sprintf("Error while registering farm %s", err)
-					dialog.ShowError(fmt.Errorf(errorsFarmLabel.Text), myWindow)
-				}
-				log.Println(errs)
-				// log.Println("Form submitted:")
-				// log.Println("multiline:")
-				// myWindow.Close()
-			}
-		},
-	}
-
-	tabs := container.NewAppTabs(
-		container.NewTabItem("Identity", formIdentity),
-		container.NewTabItem("Register Farm", formFarm),
-	)
-	tabs.SetTabLocation(container.TabLocationLeading)
-	seedpath, err := getSeedPath()
-	fmt.Println(seedpath)
+	user, ui, err := generateID(explorerUrl, "eluser"+randomString(5)+".3bot", "elemail"+randomString(5)+"@yahoo.com", "", "")
 	if err != nil {
-		println(err)
-		os.Exit(1)
+		fmt.Println(err)
 	}
-	if _, err = os.Stat(seedpath); !os.IsNotExist(err) {
-		userid.Load(seedpath)
-		threebotId = int(userid.ThreebotID)
-		if expclient, err = NewClient(explorerUrl, userid); err == nil {
-			if u, err := expclient.Phonebook.Get(userid.ThreebotID); err == nil {
-				wordsInput.Text = userid.Mnemonic
-				emailInput.Text = u.Email
-				threebotNameInput.Text = u.Name
-			} else {
+	fmt.Println(user, ui)
 
-				fmt.Println("failed to get explorer client: ", err)
-			}
-
-		}
-
-	}
-	myWindow.SetContent(tabs)
-	myWindow.Resize(fyne.NewSize(600, 300))
-
-	myWindow.ShowAndRun()
 }
+
+// func main() {
+// 	var expclient *Client
+
+// 	myApp := app.New()
+// 	myWindow := myApp.NewWindow("Go Farmer!!")
+// 	explorerUrl, _ := explorersUrls["Mainnet"]
+
+// 	// threebotNameLabel := canvas.NewText("3Bot name", color.White)
+// 	threebotNameInput := widget.NewEntry()
+// 	emailInput := widget.NewEntry()
+
+// 	// nameContainer := container.NewHBox(threebotNameLabel, threebotNameInput, layout.NewSpacer())
+// 	//
+// 	// farmNameLabel := canvas.NewText("Farm Name", color.White)
+// 	farmNameInput := widget.NewEntry()
+// 	// farmContainer := container.NewHBox(farmNameLabel, farmNameInput, layout.NewSpacer())
+
+// 	// wordsLabel := canvas.NewText("Words", color.White)
+// 	wordsInput := widget.NewMultiLineEntry()
+// 	// wordsContainer := container.NewHBox(wordsLabel, wordsInput, layout.NewSpacer())
+
+// 	// tftAddressLabel := canvas.NewText("tftAddress", color.White)
+// 	tftAddressInput := widget.NewEntry()
+// 	// tftAddressContainer := container.NewHBox(tftAddressLabel, tftAddressInput, layout.NewSpacer())
+
+// 	// buttonRegister := widget.NewButton("Register Farm", func() {
+// 	// 	log.Println("tapped")
+// 	// })
+// 	errorsIdentityLabel := widget.NewLabel("")
+// 	errorsFarmLabel := widget.NewLabel("")
+// 	infoIdentityLabel := widget.NewLabel("")
+// 	infoFarmLabel := widget.NewLabel("")
+
+// 	formIdentity := &widget.Form{
+// 		Items: []*widget.FormItem{ // we can specify items in the constructor
+// 			{Text: "3Bot Name", Widget: threebotNameInput, HintText: "should end with .3bot"},
+// 			{Text: "Email", Widget: emailInput},
+// 			{Text: "Words", Widget: wordsInput, HintText: "leave empty to generate"},
+// 			{Widget: infoIdentityLabel},
+// 			{Widget: errorsIdentityLabel},
+// 		},
+// 		SubmitText: "Register your identity",
+// 		OnSubmit: func() { // optional, handle form submission
+// 			log.Println(threebotNameInput.Text, emailInput.Text, farmNameInput.Text, wordsInput.Text, tftAddressInput.Text)
+// 			errs := validateIdentityData(threebotNameInput.Text, emailInput.Text, wordsInput.Text)
+// 			errorsIdentityLabel.Text = strings.Join(errs, "\n")
+// 			if len(errs) == 0 {
+// 				seedpath, err := getSeedPath()
+// 				if err != nil {
+// 					println(err)
+// 					os.Exit(1)
+// 				}
+// 				doGen := func() {
+// 					_, ui, err := generateID(explorerUrl, threebotNameInput.Text, emailInput.Text, seedpath, wordsInput.Text)
+// 					if err != nil {
+// 						fmt.Println(err)
+// 						fmt.Println(ui)
+// 						errorsIdentityLabel.Text = fmt.Sprintf("Error while generating identity %s", err)
+// 						dialog.ShowError(fmt.Errorf(errorsIdentityLabel.Text), myWindow)
+
+// 					} else {
+// 						infoIdentityLabel.Text = fmt.Sprintf("your 3Bot ID is %d: and seed is saved at %s", ui.ThreebotID, seedpath)
+// 						fmt.Println("menoms: ", ui.Mnemonic)
+// 						wordsInput.SetText(ui.Mnemonic)
+// 						dialog.ShowInformation("Success", infoIdentityLabel.Text, myWindow)
+// 						threebotId = int(ui.ThreebotID)
+// 						expclient, err = NewClient(explorerUrl, ui)
+// 						if err != nil {
+// 							fmt.Println("failed to get explorer client: ", err)
+// 							dialog.ShowError(fmt.Errorf("failed to get explorer client"), myWindow)
+// 						}
+// 					}
+// 				}
+// 				errorsIdentityLabel.Text = ""
+// 				if _, err = os.Stat(seedpath); !os.IsNotExist(err) {
+// 					dialog.ShowConfirm("Overwriting your 3Bot Identity", "Are you sure you want to  overwrite the existing identity? Make sure to backup your seed file.?\n\n", func(b bool) {
+// 						if b {
+
+// 							doGen()
+// 						}
+
+// 					}, myWindow)
+
+// 				} else {
+// 					doGen()
+
+// 				}
+
+// 			}
+
+// 			log.Println(errs)
+
+// 		},
+// 	}
+
+// 	formFarm := &widget.Form{
+// 		Items: []*widget.FormItem{ // we can specify items in the constructor
+// 			{Text: "Farm Name", Widget: farmNameInput},
+// 			{Text: "TFT Address", Widget: tftAddressInput, HintText: "valid TFT address (56 characters)"},
+// 			{Widget: infoFarmLabel},
+// 			{Widget: errorsFarmLabel},
+// 		},
+// 		SubmitText: "Register your farm",
+// 		OnSubmit: func() { // optional, handle form submission
+// 			log.Println(threebotNameInput.Text, emailInput.Text, farmNameInput.Text, wordsInput.Text, tftAddressInput.Text)
+// 			errs := validateData(threebotNameInput.Text, emailInput.Text, farmNameInput.Text, tftAddressInput.Text)
+// 			errorsFarmLabel.Text = strings.Join(errs, "\n")
+// 			if len(errs) == 0 && threebotId > 0 {
+// 				if farm, err := registerFarm(expclient, farmNameInput.Text, emailInput.Text, tftAddressInput.Text, threebotId); err == nil {
+
+// 					infoFarmLabel.Text = fmt.Sprintf("farm with ID %d is created", farm.ID)
+// 					dialog.ShowInformation("Farm Registered!", infoFarmLabel.Text, myWindow)
+// 				} else {
+// 					errorsFarmLabel.Text = fmt.Sprintf("Error while registering farm %s", err)
+// 					dialog.ShowError(fmt.Errorf(errorsFarmLabel.Text), myWindow)
+// 				}
+// 				log.Println(errs)
+// 				// log.Println("Form submitted:")
+// 				// log.Println("multiline:")
+// 				// myWindow.Close()
+// 			}
+// 		},
+// 	}
+
+// 	tabs := container.NewAppTabs(
+// 		container.NewTabItem("Identity", formIdentity),
+// 		container.NewTabItem("Register Farm", formFarm),
+// 	)
+// 	tabs.SetTabLocation(container.TabLocationLeading)
+// 	seedpath, err := getSeedPath()
+// 	fmt.Println(seedpath)
+// 	if err != nil {
+// 		println(err)
+// 		os.Exit(1)
+// 	}
+// 	if _, err = os.Stat(seedpath); !os.IsNotExist(err) {
+// 		userid.Load(seedpath)
+// 		threebotId = int(userid.ThreebotID)
+// 		if expclient, err = NewClient(explorerUrl, userid); err == nil {
+// 			if u, err := expclient.Phonebook.Get(userid.ThreebotID); err == nil {
+// 				wordsInput.Text = userid.Mnemonic
+// 				emailInput.Text = u.Email
+// 				threebotNameInput.Text = u.Name
+// 			} else {
+
+// 				fmt.Println("failed to get explorer client: ", err)
+// 			}
+
+// 		}
+
+// 	}
+// 	myWindow.SetContent(tabs)
+// 	myWindow.Resize(fyne.NewSize(600, 300))
+
+// 	myWindow.ShowAndRun()
+// }
 
 func validateIdentityData(name, email, words string) []string {
 	errs := make([]string, 0)

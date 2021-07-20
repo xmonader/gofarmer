@@ -314,7 +314,7 @@ func (c *httpClient) process(response *http.Response, output interface{}, expect
 			return errors.Wrapf(HTTPError{
 				err:  err,
 				resp: response,
-			}, "failed to load error while processing invalid return code of: %s", response.Status)
+			}, "failed to load error while processing invalid return code of: %s output was %s", response.Status, output)
 		}
 
 		return HTTPError{
