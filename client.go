@@ -12,7 +12,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
-	"path/filepath"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -274,9 +273,12 @@ func newHTTPClient(raw string, id Identity) (*httpClient, error) {
 
 func (c *httpClient) url(p ...string) string {
 	b := *c.u
-	b.Path = filepath.Join(b.Path, filepath.Join(p...))
-
+	allParts := []string{b.Path}
+	allParts = append(allParts, p...)
+	b.Path = strings.Join(allParts, "/")
+	fmt.Println(b)
 	return b.String()
+
 }
 
 func (c *httpClient) sign(r *http.Request) error {
