@@ -335,6 +335,9 @@ func generateID(url, name, email, seedPath, words string) (user User, ui *UserId
 			return user, ui, fmt.Errorf("user already exists and its public key doesn't match the one on explorer")
 		}
 
+	} else {
+
+		fmt.Println("err is ", elerr)
 	}
 
 	id, err := httpClient.Phonebook.Create(user)
@@ -342,21 +345,21 @@ func generateID(url, name, email, seedPath, words string) (user User, ui *UserId
 		fmt.Println(err)
 		return user, ui, errors.Wrap(err, "failed to register user")
 	}
+	fmt.Println(id)
+	// // Update UserData with created id
+	// ui.ThreebotID = int64(id)
 
-	// Update UserData with created id
-	ui.ThreebotID = int64(id)
+	// // Saving new seed struct
 
-	// Saving new seed struct
+	// os.Chmod(seedPath, 0755)
+	// if err := ui.Save(seedPath); err != nil {
+	// 	return user, ui, errors.Wrap(err, "failed to save seed")
+	// } else {
+	// 	fmt.Println("errr: ", err)
+	// }
 
-	os.Chmod(seedPath, 0755)
-	if err := ui.Save(seedPath); err != nil {
-		return user, ui, errors.Wrap(err, "failed to save seed")
-	} else {
-		fmt.Println("errr: ", err)
-	}
-
-	fmt.Println("Your ID is: ", ui.ThreebotID)
-	fmt.Println("Seed saved in: ", seedPath, " Please make sure you have it backed up.")
+	// fmt.Println("Your ID is: ", ui.ThreebotID)
+	// fmt.Println("Seed saved in: ", seedPath, " Please make sure you have it backed up.")
 	return user, ui, nil
 }
 

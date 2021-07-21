@@ -12,7 +12,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
-	"path/filepath"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -274,9 +273,23 @@ func newHTTPClient(raw string, id Identity) (*httpClient, error) {
 
 func (c *httpClient) url(p ...string) string {
 	b := *c.u
-	b.Path = filepath.Join(b.Path, filepath.Join(p...))
-
+	allParts := []string{b.Path}
+	allParts = append(allParts, p...)
+	b.Path = strings.Join(allParts, "/")
+	fmt.Println(b)
 	return b.String()
+	// fmt.Println("parts: ", p)
+	// u := c.u
+	// fmt.Println("before: ", u)
+
+	// for _, comp := range p {
+	// 	y, err := u.Parse(comp)
+	// 	if err == nil {
+	// 		u = parsed
+	// 	}
+	// }
+	// fmt.Println("url =>>> ", u)
+	// return u.String()
 }
 
 func (c *httpClient) sign(r *http.Request) error {
@@ -290,6 +303,7 @@ func (c *httpClient) sign(r *http.Request) error {
 
 func (c *httpClient) process(response *http.Response, output interface{}, expect ...int) error {
 	defer response.Body.Close()
+	fmt.Println("expected: ", expect)
 
 	if len(expect) == 0 {
 		expect = successCodes
@@ -315,6 +329,9 @@ func (c *httpClient) process(response *http.Response, output interface{}, expect
 				err:  err,
 				resp: response,
 			}, "failed to load error while processing invalid return code of: %s output was %s", response.Status, output)
+		} else {
+
+			fmt.Println("output: ", output)
 		}
 
 		return HTTPError{
@@ -340,11 +357,13 @@ func (c *httpClient) process(response *http.Response, output interface{}, expect
 }
 
 func (c *httpClient) post(u string, input interface{}, output interface{}, expect ...int) (*http.Response, error) {
+	fmt.Println("in post: ", u)
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(input); err != nil {
 		return nil, errors.Wrap(err, "failed to serialize request body")
 	}
 
+	fmt.Println(buf.String())
 	req, err := http.NewRequest(http.MethodPost, u, &buf)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create new HTTP request")
@@ -789,7 +808,9 @@ type httpPhonebook struct {
 
 func (p *httpPhonebook) Create(user User) (int64, error) {
 	var out User
+	fmt.Println("user: %v", out)
 	if _, err := p.post(p.url("users"), user, &out); err != nil {
+		fmt.Println("err gere:", err)
 		return 0, err
 	}
 
