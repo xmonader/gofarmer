@@ -65,6 +65,8 @@ func main() {
 	errorsFarmLabel := widget.NewLabel("")
 	infoIdentityLabel := widget.NewLabel("")
 	infoFarmLabel := widget.NewLabel("")
+	// farmsLabel := widget.NewLabel("")
+	errorsFarmTableLabel := widget.NewLabel("")
 
 	formIdentity := &widget.Form{
 		Items: []*widget.FormItem{ // we can specify items in the constructor
@@ -128,6 +130,28 @@ func main() {
 		},
 	}
 
+	seedpath, err := getSeedPath()
+	if err != nil {
+		println(err)
+		os.Exit(1)
+	}
+	if _, err = os.Stat(seedpath); !os.IsNotExist(err) {
+		userid.Load(seedpath)
+		threebotId = int(userid.ThreebotID)
+		if expclient, err = NewClient(explorerUrl, userid); err == nil {
+			if u, err := expclient.Phonebook.Get(userid.ThreebotID); err == nil {
+				wordsInput.Text = userid.Mnemonic
+				emailInput.Text = u.Email
+				threebotNameInput.Text = u.Name
+			} else {
+
+				fmt.Println("failed to get explorer client: ", err)
+			}
+
+		}
+
+	}
+
 	formFarm := &widget.Form{
 		Items: []*widget.FormItem{ // we can specify items in the constructor
 			{Text: "Farm Name", Widget: farmNameInput},
@@ -157,33 +181,116 @@ func main() {
 		},
 	}
 
+	// // Simple listing/printing  of the user's farms
+	// formListFarms := &widget.Form{
+	// 	Items: []*widget.FormItem{ // we can specify items in the constructor
+	// 		{Widget: farmsLabel},
+	// 		{Widget: errorsFarmLabel},
+	// 	},
+	// 	SubmitText: "List Farms",
+	// 	OnSubmit: func() { // optional, handle form submission
+	// 		if threebotId > 0 {
+	// 			// listFarms(expclient *Client) (farmsRet []Farm, err error)
+	// 			if _, farmsString, err := listFarms(expclient, threebotId); err == nil {
+	// 				farmsLabel.Text = farmsString
+	// 			} else {
+	// 				errorsFarmLabel.Text = fmt.Sprintf("Error %s", err)
+	// 				dialog.ShowError(fmt.Errorf(errorsFarmLabel.Text), myWindow)
+	// 			}
+	// 		}
+	// 	},
+	// }
+
+	formFarms := &widget.Form{
+		Items: []*widget.FormItem{
+			{Widget: errorsFarmTableLabel},
+		},
+		SubmitText: "Reload Farms",
+		OnSubmit: func() {
+
+			myFarms := []string{}
+			if farmsRet, _, err := listFarms(expclient, threebotId); err == nil {
+				if len(farmsRet) > 0 {
+					for _, f := range farmsRet {
+						myFarms = append(myFarms, []string{f.Email, f.Name}...)
+						// fmt.Println(f.Name)
+						// fmt.Println("-------------------------------------------")
+					}
+				}
+			} else {
+				errorsFarmLabel.Text = fmt.Sprintf("Error %s", err)
+				dialog.ShowError(fmt.Errorf(errorsFarmLabel.Text), myWindow)
+			}
+			// TODO update farmTable added to the form with the new myFarms
+
+			// var data = [][]string{[]string{"top left", "top right"},
+			// 	[]string{"bottom left", "bottom right"}}
+			// var data = [][]string{[]string{"Farm Email", "Farm name"}, myFarms}
+			// farmTable := widget.NewTable(
+			// 	func() (int, int) {
+			// 		return len(data), len(data[0])
+			// 	},
+			// 	func() fyne.CanvasObject {
+			// 		return widget.NewLabel("wide content")
+			// 	},
+			// 	func(i widget.TableCellID, o fyne.CanvasObject) {
+			// 		o.(*widget.Label).SetText(data[i.Row][i.Col])
+			// 	})
+
+		},
+	}
+
+	if expclient != nil {
+		myFarms := []string{}
+		if farmsRet, _, err := listFarms(expclient, threebotId); err == nil {
+			if len(farmsRet) > 0 {
+				for _, f := range farmsRet {
+					myFarms = append(myFarms, []string{f.Email, f.Name}...)
+					// fmt.Println(myFarms)
+					// fmt.Println("-------------------------------------------")
+				}
+			}
+		} else {
+			errorsFarmLabel.Text = fmt.Sprintf("Error %s", err)
+			dialog.ShowError(fmt.Errorf(errorsFarmLabel.Text), myWindow)
+		}
+
+		// var data = [][]string{{"top left", "top right"},
+		// 	{"bottom left", "bottom right"}}
+		var data = [][]string{{"Farm Email", "Farm name"}, myFarms}
+		farmTable := widget.NewTable(
+			func() (int, int) {
+				return len(data), len(data[0])
+			},
+			func() fyne.CanvasObject {
+				item := widget.NewLabel("wide content")
+				item.Resize(fyne.Size{
+					Width:  500,
+					Height: 30,
+				})
+
+				return item
+			},
+			func(i widget.TableCellID, o fyne.CanvasObject) {
+				o.(*widget.Label).SetText(data[i.Row][i.Col])
+				o.(*widget.Label).Resize(fyne.Size{
+					Width:  500,
+					Height: 30,
+				})
+			})
+
+		formFarms.AppendItem(&widget.FormItem{Widget: widget.NewCard("Farms", "", farmTable)})
+
+	}
+
 	tabs := container.NewAppTabs(
 		container.NewTabItem("Identity", formIdentity),
 		container.NewTabItem("Register Farm", formFarm),
+		// container.NewTabItem("Farms", formListFarms),
+		container.NewTabItem("Farms", formFarms),
 	)
 	tabs.SetTabLocation(container.TabLocationLeading)
-	seedpath, err := getSeedPath()
-	fmt.Println(seedpath)
-	if err != nil {
-		println(err)
-		os.Exit(1)
-	}
-	if _, err = os.Stat(seedpath); !os.IsNotExist(err) {
-		userid.Load(seedpath)
-		threebotId = int(userid.ThreebotID)
-		if expclient, err = NewClient(explorerUrl, userid); err == nil {
-			if u, err := expclient.Phonebook.Get(userid.ThreebotID); err == nil {
-				wordsInput.Text = userid.Mnemonic
-				emailInput.Text = u.Email
-				threebotNameInput.Text = u.Name
-			} else {
 
-				fmt.Println("failed to get explorer client: ", err)
-			}
-
-		}
-
-	}
 	myWindow.SetContent(tabs)
 	myWindow.Resize(fyne.NewSize(600, 300))
 
@@ -264,6 +371,52 @@ func registerFarm(expclient *Client, name, email, tftAddress string, tid int) (F
 	return farm, nil
 }
 
+func formatFarm(farm Farm) string {
+	b := &strings.Builder{}
+	fmt.Fprintf(b, ("-------------------------------------------"))
+	fmt.Fprintf(b, "ID: %d\n", farm.ID)
+	fmt.Fprintf(b, "Name: %s\n", farm.Name)
+	fmt.Fprintf(b, "Email: %s\n", farm.Email)
+	fmt.Fprintf(b, "Farmer TheebotID: %d\n", farm.ThreebotID)
+	fmt.Fprintf(b, "Wallet addresses:\n")
+	for _, a := range farm.WalletAddresses {
+		fmt.Fprintf(b, "  %s:%s\n", a.Asset, a.Address)
+	}
+	fmt.Fprintf(b, "IP addresses:\n")
+	for _, a := range farm.IPAddresses {
+		fmt.Fprintf(b, "  IP-> %s   Gateway-> %s\n", a.Address, a.Gateway)
+	}
+	return b.String()
+}
+
+func listFarms(expclient *Client, tid int) (farmsRet []Farm, farmsFormatted string, err error) {
+	farmsRet = make([]Farm, 0)
+	pageNumber := 1
+
+	for {
+		pager := Page(pageNumber, 20)
+		farms, err := expclient.Directory.FarmList(int64(tid), "", pager)
+		farmsRet = append(farmsRet, farms...)
+		if err != nil {
+			break
+		}
+		if len(farms) == 0 {
+			break
+		}
+		pageNumber++
+	}
+	if len(farmsRet) > 0 {
+		for _, f := range farmsRet {
+			farmsFormatted = farmsFormatted + formatFarm(f)
+
+		}
+	} else {
+
+		fmt.Println("No farms found")
+	}
+	return farmsRet, farmsFormatted, nil
+}
+
 func generateID(url, name, email, seedPath, words string) (user User, ui *UserIdentity, err error) {
 	fmt.Println("generating against ", words, seedPath)
 	ui = &UserIdentity{}
@@ -309,7 +462,7 @@ func generateID(url, name, email, seedPath, words string) (user User, ui *UserId
 	if elerr == nil {
 		// user exists already now we check against the publick key
 		if eluser.Pubkey == hex.EncodeToString(ui.Key().PublicKey) {
-			fmt.Println("user exists an matches explorer registered user pubkey")
+			fmt.Println("user exists and matches explorer registered user pubkey")
 
 			user.ID = eluser.ID
 			ui.ThreebotID = int64(user.ID)
