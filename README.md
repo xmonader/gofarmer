@@ -20,6 +20,21 @@ requires:
 for the farm all you need is 
 - farm name: alphanumeric
 - tft wallet address
+
+## listing / editing farms 
+
+![farm list](./img/gofarmerlistfarms.png)
+
+Can list all of your farms and edit them (mainly the wallet address is what is interesting to you)
+## listing nodes / inspecting details
+![nodes list](./img/gofarmernodedetails.png)
+
+Can list all nodes and show the important details
+
+## dark/light mode support
+
+![dark/light mode](./img/gofarmercolors.png)
+`Go farmer` now supports dark/light modes 
 ## running
 
 - clone `https://github.com/xmonader/gofarmer`
