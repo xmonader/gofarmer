@@ -48,6 +48,8 @@ func main() {
 	//
 	// farmNameLabel := canvas.NewText("Farm Name", color.White)
 	farmNameInput := widget.NewEntry()
+	farmNameInputUpdate := widget.NewEntry()
+
 	// farmContainer := container.NewHBox(farmNameLabel, farmNameInput, layout.NewSpacer())
 
 	// wordsLabel := canvas.NewText("Words", color.White)
@@ -56,6 +58,8 @@ func main() {
 
 	// tftAddressLabel := canvas.NewText("tftAddress", color.White)
 	tftAddressInput := widget.NewEntry()
+	tftAddressInputUpdate := widget.NewEntry()
+
 	// tftAddressContainer := container.NewHBox(tftAddressLabel, tftAddressInput, layout.NewSpacer())
 
 	// buttonRegister := widget.NewButton("Register Farm", func() {
@@ -63,8 +67,37 @@ func main() {
 	// })
 	errorsIdentityLabel := widget.NewLabel("")
 	errorsFarmLabel := widget.NewLabel("")
+	errorsFarmLabelUpdate := widget.NewLabel("")
+
 	infoIdentityLabel := widget.NewLabel("")
 	infoFarmLabel := widget.NewLabel("")
+	infoFarmLabelUpdate := widget.NewLabel("")
+
+	seedpath, err := getSeedPath()
+	fmt.Println(seedpath)
+	if err != nil {
+		println(err)
+		os.Exit(1)
+	}
+	if _, err = os.Stat(seedpath); !os.IsNotExist(err) {
+		userid.Load(seedpath)
+		threebotId = int(userid.ThreebotID)
+		if expclient, err = NewClient(explorerUrl, userid); err == nil {
+			if u, err := expclient.Phonebook.Get(userid.ThreebotID); err == nil {
+				wordsInput.Text = userid.Mnemonic
+				emailInput.Text = u.Email
+				threebotNameInput.Text = u.Name
+			} else {
+
+				fmt.Println("failed to get explorer client: ", err)
+			}
+
+		}
+
+	}
+
+	var farmToEditIdx int64 = 0
+	farmsListData := make([]Farm, 0)
 
 	formIdentity := &widget.Form{
 		Items: []*widget.FormItem{ // we can specify items in the constructor
@@ -157,33 +190,72 @@ func main() {
 		},
 	}
 
-	tabs := container.NewAppTabs(
-		container.NewTabItem("Identity", formIdentity),
-		container.NewTabItem("Register Farm", formFarm),
-	)
-	tabs.SetTabLocation(container.TabLocationLeading)
-	seedpath, err := getSeedPath()
-	fmt.Println(seedpath)
-	if err != nil {
-		println(err)
-		os.Exit(1)
-	}
-	if _, err = os.Stat(seedpath); !os.IsNotExist(err) {
-		userid.Load(seedpath)
-		threebotId = int(userid.ThreebotID)
-		if expclient, err = NewClient(explorerUrl, userid); err == nil {
-			if u, err := expclient.Phonebook.Get(userid.ThreebotID); err == nil {
-				wordsInput.Text = userid.Mnemonic
-				emailInput.Text = u.Email
-				threebotNameInput.Text = u.Name
-			} else {
+	formFarmUpdate := &widget.Form{
+		Items: []*widget.FormItem{ // we can specify items in the constructor
+			{Text: "Farm Name", Widget: farmNameInputUpdate},
+			{Text: "TFT Address", Widget: tftAddressInputUpdate, HintText: "valid TFT address (56 characters)"},
+			{Widget: infoFarmLabelUpdate},
+			{Widget: errorsFarmLabelUpdate},
+		},
+		SubmitText: "Edit your farm",
+		OnSubmit: func() { // optional, handle form submission
+			log.Println(threebotNameInput.Text, emailInput.Text, farmNameInputUpdate.Text, wordsInput.Text, tftAddressInputUpdate.Text)
+			errs := validateData(threebotNameInput.Text, emailInput.Text, farmNameInput.Text, tftAddressInput.Text)
+			errorsFarmLabel.Text = strings.Join(errs, "\n")
+			if len(errs) == 0 && threebotId > 0 {
+				if farm, err := updateFarm(expclient, farmsListData[farmToEditIdx].ID, farmNameInputUpdate.Text, emailInput.Text, tftAddressInputUpdate.Text, threebotId); err == nil {
 
-				fmt.Println("failed to get explorer client: ", err)
+					infoFarmLabel.Text = fmt.Sprintf("farm with ID %d is created", farm.ID)
+					dialog.ShowInformation("Farm updated!", infoFarmLabelUpdate.Text, myWindow)
+				} else {
+					errorsFarmLabel.Text = fmt.Sprintf("Error while updating farm %s", err)
+					dialog.ShowError(fmt.Errorf(errorsFarmLabelUpdate.Text), myWindow)
+				}
+				log.Println(errs)
+				// log.Println("Form submitted:")
+				// log.Println("multiline:")
+				// myWindow.Close()
 			}
+		},
+	}
+	farmsListData = ListAllFarms(expclient, int64(threebotId))
 
+	farmsList := widget.NewList(
+		func() int {
+			return len(farmsListData)
+		},
+		func() fyne.CanvasObject {
+			return widget.NewLabel("template")
+		},
+		func(i widget.ListItemID, o fyne.CanvasObject) {
+			o.(*widget.Label).SetText(farmsListData[i].Name)
+		})
+	farmsList.OnSelected = func(id widget.ListItemID) {
+		farmToEditIdx = int64(id)
+		fmt.Println("selected item ", id)
+		fmt.Println(farmsListData[id])
+		farmNameInputUpdate.SetText(farmsListData[id].Name)
+		fmt.Println("Address: ", farmsListData[id].WalletAddresses[0].Address)
+		for _, x := range farmsListData[id].WalletAddresses {
+			if x.Address != "" && x.Asset != "" {
+				tftAddressInputUpdate.SetText(x.Address)
+				break
+			}
 		}
 
 	}
+	lblFarmsList := widget.NewLabelWithStyle("Farms List", fyne.TextAlignCenter, fyne.TextStyle{Bold: true, Italic: true})
+	contFarmsListWithTitle := container.NewVBox(lblFarmsList, farmsList)
+
+	contFarmsList := container.NewVSplit(contFarmsListWithTitle, formFarmUpdate)
+
+	tabs := container.NewAppTabs(
+		container.NewTabItem("Identity", formIdentity),
+		container.NewTabItem("Register Farm", formFarm),
+		container.NewTabItem("Farms", contFarmsList),
+	)
+	tabs.SetTabLocation(container.TabLocationLeading)
+
 	myWindow.SetContent(tabs)
 	myWindow.Resize(fyne.NewSize(600, 300))
 
@@ -264,6 +336,29 @@ func registerFarm(expclient *Client, name, email, tftAddress string, tid int) (F
 	return farm, nil
 }
 
+func updateFarm(expclient *Client, farmId int64, name, email, tftAddress string, tid int) (Farm, error) {
+	name = strings.TrimSpace(name)
+	email = strings.TrimSpace(email)
+	tftAddress = strings.TrimSpace(tftAddress)
+	addresses := make([]WalletAddress, 1)
+	address := WalletAddress{Address: tftAddress, Asset: "TFT"}
+	addresses = append(addresses, address)
+	farm := Farm{
+		Name:            name,
+		ID:              farmId,
+		ThreebotID:      int64(tid),
+		Email:           email,
+		WalletAddresses: addresses,
+	}
+
+	err := expclient.Directory.FarmUpdate(farm)
+	if err != nil {
+		fmt.Println("err:", err)
+		return farm, err
+	}
+	fmt.Println("farm updated", farm)
+	return farm, nil
+}
 func generateID(url, name, email, seedPath, words string) (user User, ui *UserIdentity, err error) {
 	fmt.Println("generating against ", words, seedPath)
 	ui = &UserIdentity{}
@@ -374,4 +469,24 @@ func LoadSeedData(path string) (string, int, error) {
 		return seed110.Mnemonics, seed110.ThreebotID, nil
 	}
 	return "", 0, fmt.Errorf("couldn't get mnemonics")
+}
+func ListAllFarms(expclient *Client, tid int64) []Farm {
+	farmsRet := make([]Farm, 0)
+	pageNumber := 1
+
+	for {
+		pager := Page(pageNumber, 20)
+		farms, err := expclient.Directory.FarmList(tid, "", pager)
+		farmsRet = append(farmsRet, farms...)
+		if err != nil {
+			break
+		}
+		if len(farms) == 0 {
+			break
+		}
+		pageNumber++
+	}
+	fmt.Println(farmsRet)
+	return farmsRet
+
 }

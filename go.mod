@@ -13,7 +13,6 @@ require (
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/pkg/errors v0.9.1
 	github.com/rs/zerolog v1.19.0
-	github.com/threefoldtech/tfexplorer v0.6.0
 	github.com/threefoldtech/zos v0.4.0-rc9-b.0.20200918140104-b46553b0c680
 	github.com/tyler-smith/go-bip39 v1.0.2
 	github.com/whs/nacl-sealed-box v0.0.0-20180930164530-92b9ba845d8d
