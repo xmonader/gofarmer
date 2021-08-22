@@ -8,6 +8,7 @@ require (
 	github.com/agl/ed25519 v0.0.0-20170116200512-5312a6153412
 	github.com/blang/semver v3.5.1+incompatible
 	github.com/docker/docker v1.13.1
+	github.com/dustin/go-humanize v1.0.0
 	github.com/fyne-io/fyne-cross v1.1.0 // indirect
 	github.com/jbenet/go-base58 v0.0.0-20150317085156-6237cf65f3a6
 	github.com/mitchellh/go-homedir v1.1.0

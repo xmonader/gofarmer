@@ -10,12 +10,17 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/layout"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"github.com/dustin/go-humanize"
 	"github.com/pkg/errors"
 )
 
@@ -40,38 +45,42 @@ func main() {
 	myWindow := myApp.NewWindow("Go Farmer!!")
 	explorerUrl, _ := explorersUrls["Mainnet"]
 
-	// threebotNameLabel := canvas.NewText("3Bot name", color.White)
 	threebotNameInput := widget.NewEntry()
 	emailInput := widget.NewEntry()
-
-	// nameContainer := container.NewHBox(threebotNameLabel, threebotNameInput, layout.NewSpacer())
-	//
-	// farmNameLabel := canvas.NewText("Farm Name", color.White)
-	farmNameInput := widget.NewEntry()
-	farmNameInputUpdate := widget.NewEntry()
-
-	// farmContainer := container.NewHBox(farmNameLabel, farmNameInput, layout.NewSpacer())
-
-	// wordsLabel := canvas.NewText("Words", color.White)
 	wordsInput := widget.NewMultiLineEntry()
-	// wordsContainer := container.NewHBox(wordsLabel, wordsInput, layout.NewSpacer())
-
-	// tftAddressLabel := canvas.NewText("tftAddress", color.White)
-	tftAddressInput := widget.NewEntry()
-	tftAddressInputUpdate := widget.NewEntry()
-
-	// tftAddressContainer := container.NewHBox(tftAddressLabel, tftAddressInput, layout.NewSpacer())
-
-	// buttonRegister := widget.NewButton("Register Farm", func() {
-	// 	log.Println("tapped")
-	// })
-	errorsIdentityLabel := widget.NewLabel("")
-	errorsFarmLabel := widget.NewLabel("")
-	errorsFarmLabelUpdate := widget.NewLabel("")
-
 	infoIdentityLabel := widget.NewLabel("")
+	errorsIdentityLabel := widget.NewLabel("")
+
+	farmNameInput := widget.NewEntry()
+	tftAddressInput := widget.NewEntry()
+	errorsFarmLabel := widget.NewLabel("")
 	infoFarmLabel := widget.NewLabel("")
+
+	farmIdEntryUpdate := widget.NewEntry()
+	farmIdEntryUpdate.Disable()
+	farmNameInputUpdate := widget.NewEntry()
+	tftAddressInputUpdate := widget.NewEntry()
+	errorsFarmLabelUpdate := widget.NewLabel("")
 	infoFarmLabelUpdate := widget.NewLabel("")
+
+	nodeId := widget.NewEntry()
+	nodeVersion := widget.NewEntry()
+	nodeHostName := widget.NewEntry()
+	nodeFarmerName := widget.NewEntry()
+	nodeLocation := widget.NewEntry()
+	nodeUptime := widget.NewEntry()
+	nodeHRU := widget.NewEntry()
+	nodeSRU := widget.NewEntry()
+	nodeCRU := widget.NewEntry()
+	nodeMRU := widget.NewEntry()
+
+	farmsListData := make([]Farm, 0)
+	farmsNames := make([]string, 0)
+	farmsBinding := binding.BindStringList(&farmsNames)
+
+	nodesListData := make([]Node, 0)
+	nodesNames := make([]string, 0)
+	nodesBinding := binding.BindStringList(&nodesNames)
 
 	seedpath, err := getSeedPath()
 	fmt.Println(seedpath)
@@ -97,7 +106,6 @@ func main() {
 	}
 
 	var farmToEditIdx int64 = 0
-	farmsListData := make([]Farm, 0)
 
 	formIdentity := &widget.Form{
 		Items: []*widget.FormItem{ // we can specify items in the constructor
@@ -178,6 +186,8 @@ func main() {
 
 					infoFarmLabel.Text = fmt.Sprintf("farm with ID %d is created", farm.ID)
 					dialog.ShowInformation("Farm Registered!", infoFarmLabel.Text, myWindow)
+					farmsListData, farmsNames = ListAllFarmsAndNames(expclient, int64(threebotId))
+					farmsBinding.Set(farmsNames)
 				} else {
 					errorsFarmLabel.Text = fmt.Sprintf("Error while registering farm %s", err)
 					dialog.ShowError(fmt.Errorf(errorsFarmLabel.Text), myWindow)
@@ -192,6 +202,7 @@ func main() {
 
 	formFarmUpdate := &widget.Form{
 		Items: []*widget.FormItem{ // we can specify items in the constructor
+			{Text: "Farm ID", Widget: farmIdEntryUpdate},
 			{Text: "Farm Name", Widget: farmNameInputUpdate},
 			{Text: "TFT Address", Widget: tftAddressInputUpdate, HintText: "valid TFT address (56 characters)"},
 			{Widget: infoFarmLabelUpdate},
@@ -200,64 +211,138 @@ func main() {
 		SubmitText: "Edit your farm",
 		OnSubmit: func() { // optional, handle form submission
 			log.Println(threebotNameInput.Text, emailInput.Text, farmNameInputUpdate.Text, wordsInput.Text, tftAddressInputUpdate.Text)
-			errs := validateData(threebotNameInput.Text, emailInput.Text, farmNameInput.Text, tftAddressInput.Text)
-			errorsFarmLabel.Text = strings.Join(errs, "\n")
+			errs := validateData(threebotNameInput.Text, emailInput.Text, farmNameInputUpdate.Text, tftAddressInputUpdate.Text)
+			errorsFarmLabelUpdate.Text = strings.Join(errs, "\n")
 			if len(errs) == 0 && threebotId > 0 {
 				if farm, err := updateFarm(expclient, farmsListData[farmToEditIdx].ID, farmNameInputUpdate.Text, emailInput.Text, tftAddressInputUpdate.Text, threebotId); err == nil {
 
-					infoFarmLabel.Text = fmt.Sprintf("farm with ID %d is created", farm.ID)
+					infoFarmLabelUpdate.Text = fmt.Sprintf("farm with ID %d is updated", farm.ID)
 					dialog.ShowInformation("Farm updated!", infoFarmLabelUpdate.Text, myWindow)
+					farmsListData, farmsNames = ListAllFarmsAndNames(expclient, int64(threebotId))
+					farmsBinding.Set(farmsNames)
 				} else {
-					errorsFarmLabel.Text = fmt.Sprintf("Error while updating farm %s", err)
+					errorsFarmLabelUpdate.Text = fmt.Sprintf("Error while updating farm %s", err)
 					dialog.ShowError(fmt.Errorf(errorsFarmLabelUpdate.Text), myWindow)
 				}
 				log.Println(errs)
-				// log.Println("Form submitted:")
-				// log.Println("multiline:")
-				// myWindow.Close()
 			}
 		},
 	}
-	farmsListData = ListAllFarms(expclient, int64(threebotId))
 
-	farmsList := widget.NewList(
-		func() int {
-			return len(farmsListData)
-		},
+	if expclient != nil {
+		farmsListData, farmsNames = ListAllFarmsAndNames(expclient, int64(threebotId))
+		farmsBinding.Set(farmsNames)
+	}
+
+	farmsList := widget.NewListWithData(farmsBinding,
 		func() fyne.CanvasObject {
 			return widget.NewLabel("template")
 		},
-		func(i widget.ListItemID, o fyne.CanvasObject) {
-			o.(*widget.Label).SetText(farmsListData[i].Name)
+		func(i binding.DataItem, o fyne.CanvasObject) {
+			o.(*widget.Label).Bind(i.(binding.String))
 		})
 	farmsList.OnSelected = func(id widget.ListItemID) {
+		formFarmUpdate.Show()
 		farmToEditIdx = int64(id)
-		fmt.Println("selected item ", id)
-		fmt.Println(farmsListData[id])
+		if id >= len(farmsListData) {
+
+			return
+		}
 		farmNameInputUpdate.SetText(farmsListData[id].Name)
-		fmt.Println("Address: ", farmsListData[id].WalletAddresses[0].Address)
 		for _, x := range farmsListData[id].WalletAddresses {
 			if x.Address != "" && x.Asset != "" {
 				tftAddressInputUpdate.SetText(x.Address)
 				break
 			}
 		}
+		farmIdEntryUpdate.SetText(fmt.Sprintf("%d", farmsListData[id].ID))
+		nodesListData, nodesNames = ListAllNodesAndNames(expclient, farmsListData[id].ID)
+		nodesBinding.Set(nodesNames)
 
 	}
-	lblFarmsList := widget.NewLabelWithStyle("Farms List", fyne.TextAlignCenter, fyne.TextStyle{Bold: true, Italic: true})
-	contFarmsListWithTitle := container.NewVBox(lblFarmsList, farmsList)
+	scrolledFarmsList := container.NewVScroll(farmsList)
+	scrolledFarmsList.SetMinSize(fyne.NewSize(100, 400))
 
-	contFarmsList := container.NewVSplit(contFarmsListWithTitle, formFarmUpdate)
+	nodeDetailsLayout := container.NewVScroll(container.New(layout.NewFormLayout(),
+		widget.NewLabel("Node ID"), nodeId,
+		widget.NewLabel("Node Version"), nodeVersion,
+		widget.NewLabel("Hostname"), nodeHostName,
+		widget.NewLabel("Farm name"), nodeFarmerName,
+		widget.NewLabel("Location"), nodeLocation,
+		widget.NewLabel("Uptime"), nodeUptime,
+		widget.NewLabel("CRU"), nodeCRU,
+		widget.NewLabel("MRU"), nodeMRU,
+		widget.NewLabel("HRU"), nodeHRU,
+		widget.NewLabel("SRU"), nodeSRU,
+	))
+	nodeDetailsLayout.Hide()
+
+	nodesList := widget.NewListWithData(nodesBinding,
+		func() fyne.CanvasObject {
+			return widget.NewLabel("template")
+		},
+		func(i binding.DataItem, o fyne.CanvasObject) {
+			o.(*widget.Label).Bind(i.(binding.String))
+		})
+	nodesList.OnSelected = func(id widget.ListItemID) {
+		nodeDetailsLayout.Show()
+		nodeIdx := int64(id)
+
+		if id > len(nodesNames) {
+			return
+		}
+		nodeSelected := nodesListData[nodeIdx]
+		nodeId.SetText(nodeSelected.NodeId)
+		nodeVersion.SetText(nodeSelected.OsVersion)
+		nodeHostName.SetText(nodeSelected.HostName)
+		nodeLocation.Text = ""
+		if nodeSelected.Location.Country != "" {
+			nodeLocation.Text += nodeSelected.Location.Country
+		}
+		if nodeSelected.Location.City != "" {
+			nodeLocation.Text += " - " + nodeSelected.Location.City
+		}
+		nodeLocation.Refresh()
+		nodeCRU.SetText(fmt.Sprintf("%d", nodeSelected.TotalResources.Cru))
+		nodeMRU.SetText(fmt.Sprintf("%f", nodeSelected.TotalResources.Mru))
+		nodeSRU.SetText(fmt.Sprintf("%f", nodeSelected.TotalResources.Sru))
+		nodeHRU.SetText(fmt.Sprintf("%f", nodeSelected.TotalResources.Hru))
+		t := time.Unix(nodeSelected.Uptime, 0)
+
+		nodeUptime.SetText(fmt.Sprintf("%s", humanize.Time(t)))
+
+	}
+	scrolledNodesList := container.NewVScroll(nodesList)
+	nodeDetailsLayout.SetMinSize(fyne.NewSize(100, 400))
+
+	scrolledNodesCont := container.NewVSplit(scrolledNodesList, nodeDetailsLayout)
+
+	// contScrolledList := container.NewVBox(container.NewPadded(), scrolledFarmsList)
+	scolledFarmsListCont := container.NewVBox(scrolledFarmsList, container.NewPadded(), formFarmUpdate)
+
+	formFarmUpdate.Resize(fyne.NewSize(700, 400))
+	formFarmUpdate.Hide()
+	contFarmsList := container.NewHSplit(scolledFarmsListCont, scrolledNodesCont)
+
+	themes := fyne.NewContainerWithLayout(layout.NewGridLayout(2),
+		widget.NewButton("Dark", func() {
+			fyne.CurrentApp().Settings().SetTheme(theme.DarkTheme())
+		}),
+		widget.NewButton("Light", func() {
+			fyne.CurrentApp().Settings().SetTheme(theme.LightTheme())
+		}),
+	)
 
 	tabs := container.NewAppTabs(
 		container.NewTabItem("Identity", formIdentity),
 		container.NewTabItem("Register Farm", formFarm),
 		container.NewTabItem("Farms", contFarmsList),
+		container.NewTabItem("Settings", themes),
 	)
 	tabs.SetTabLocation(container.TabLocationLeading)
 
 	myWindow.SetContent(tabs)
-	myWindow.Resize(fyne.NewSize(600, 300))
+	myWindow.Resize(fyne.NewSize(800, 600))
 
 	myWindow.ShowAndRun()
 }
@@ -316,7 +401,7 @@ func registerFarm(expclient *Client, name, email, tftAddress string, tid int) (F
 	name = strings.TrimSpace(name)
 	email = strings.TrimSpace(email)
 	tftAddress = strings.TrimSpace(tftAddress)
-	addresses := make([]WalletAddress, 1)
+	addresses := make([]WalletAddress, 0)
 	address := WalletAddress{Address: tftAddress, Asset: "TFT"}
 	addresses = append(addresses, address)
 	farm := Farm{
@@ -340,7 +425,7 @@ func updateFarm(expclient *Client, farmId int64, name, email, tftAddress string,
 	name = strings.TrimSpace(name)
 	email = strings.TrimSpace(email)
 	tftAddress = strings.TrimSpace(tftAddress)
-	addresses := make([]WalletAddress, 1)
+	addresses := make([]WalletAddress, 0)
 	address := WalletAddress{Address: tftAddress, Asset: "TFT"}
 	addresses = append(addresses, address)
 	farm := Farm{
@@ -350,13 +435,11 @@ func updateFarm(expclient *Client, farmId int64, name, email, tftAddress string,
 		Email:           email,
 		WalletAddresses: addresses,
 	}
-
 	err := expclient.Directory.FarmUpdate(farm)
 	if err != nil {
 		fmt.Println("err:", err)
 		return farm, err
 	}
-	fmt.Println("farm updated", farm)
 	return farm, nil
 }
 func generateID(url, name, email, seedPath, words string) (user User, ui *UserIdentity, err error) {
@@ -470,8 +553,9 @@ func LoadSeedData(path string) (string, int, error) {
 	}
 	return "", 0, fmt.Errorf("couldn't get mnemonics")
 }
-func ListAllFarms(expclient *Client, tid int64) []Farm {
+func ListAllFarmsAndNames(expclient *Client, tid int64) ([]Farm, []string) {
 	farmsRet := make([]Farm, 0)
+	farmsNames := make([]string, 0)
 	pageNumber := 1
 
 	for {
@@ -486,7 +570,35 @@ func ListAllFarms(expclient *Client, tid int64) []Farm {
 		}
 		pageNumber++
 	}
-	fmt.Println(farmsRet)
-	return farmsRet
+	for _, f := range farmsRet {
+		farmsNames = append(farmsNames, f.Name)
+	}
+	return farmsRet, farmsNames
+
+}
+
+func ListAllNodesAndNames(expclient *Client, farmId int64) ([]Node, []string) {
+	nodesRet := make([]Node, 0)
+	nodesNames := make([]string, 0)
+	pageNumber := 1
+
+	filter := NodeFilter{}
+	filter = filter.WithFarm(farmId)
+	for {
+		pager := Page(pageNumber, 20)
+		nodes, err := expclient.Directory.NodeList(filter, pager)
+		nodesRet = append(nodesRet, nodes...)
+		if err != nil {
+			break
+		}
+		if len(nodes) == 0 {
+			break
+		}
+		pageNumber++
+	}
+	for _, n := range nodesRet {
+		nodesNames = append(nodesNames, n.NodeId)
+	}
+	return nodesRet, nodesNames
 
 }

@@ -427,6 +427,27 @@ func (c *httpClient) delete(u string, query url.Values, output interface{}, expe
 
 	return response, c.process(response, output, expect...)
 }
+func (c *httpClient) deleteWithBody(u string, input interface{}, output interface{}, expect ...int) (*http.Response, error) {
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(input); err != nil {
+		return nil, errors.Wrap(err, "failed to serialize request body")
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, u, &buf)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create new HTTP request")
+	}
+
+	if err := c.sign(req); err != nil {
+		return nil, errors.Wrap(err, "failed to sign HTTP request")
+	}
+	response, err := c.cl.Do(req)
+	if err != nil {
+		return nil, errors.Wrapf(ErrRequestFailure, "reason: %s", err)
+	}
+
+	return response, c.process(response, output, expect...)
+}
 
 type (
 	// Client structure
@@ -459,6 +480,7 @@ type (
 
 		NodeUpdateUptime(id string, uptime uint64) error
 		NodeUpdateUsedResources(id string, resources ResourceAmount, workloads WorkloadAmount) error
+		NodeList(filter NodeFilter, pager *Pager) (nodes []Node, err error)
 	}
 
 	// Phonebook interface
@@ -751,39 +773,54 @@ func (d *httpDirectory) NodeUpdateUsedResources(id string, resources ResourceAmo
 	_, err := d.post(d.url("nodes", id, "used_resources"), input, nil, http.StatusOK)
 	return err
 }
+func (d *httpDirectory) FarmAddIP(id int64, ip PublicIP) error {
+	_, err := d.post(d.url("farms", fmt.Sprintf("%d/ip", id)), []PublicIP{ip}, nil, http.StatusOK)
+	return err
+}
+func (d *httpDirectory) FarmDeleteIP(id int64, ipaddr string) error {
+	_, err := d.deleteWithBody(d.url("farms", fmt.Sprintf("%d/ip", id)), ipaddr, nil, http.StatusOK)
+	return err
+}
+func (d *httpDirectory) NodeList(filter NodeFilter, pager *Pager) (nodes []Node, err error) {
+	query := url.Values{}
+	pager.apply(query)
+	filter.Apply(query)
+	_, err = d.get(d.url("nodes"), query, &nodes, http.StatusOK)
+	return
+}
 
-// func (d *httpDirectory) Nodes(cacheSize int, proofs bool) NodeIter {
-// 	// pages start at index 1
-// 	return &httpNodeIter{cl: d, size: cacheSize, page: 1, proofs: proofs}
-// }
+func (d *httpDirectory) Nodes(cacheSize int, proofs bool) NodeIter {
+	// pages start at index 1
+	return &httpNodeIter{cl: d, size: cacheSize, page: 1, proofs: proofs}
+}
 
-// func (ni *httpNodeIter) Next() (*Node, error) {
-// 	// check if there are still cached nodes
-// 	if ni.cacheIdx >= len(ni.cache) {
-// 		if ni.finished {
-// 			return nil, nil
-// 		}
-// 		// pull new data in cache
-// 		pager := Page(ni.page, ni.size)
-// 		filter := NodeFilter{}.WithProofs(ni.proofs)
-// 		nodes, err := ni.cl.NodeList(filter, pager)
-// 		if err != nil {
-// 			return nil, errors.Wrap(err, "could not get nodes")
-// 		}
-// 		if len(nodes) == 0 {
-// 			// no more nodes, iteration finished
-// 			return nil, nil
-// 		}
-// 		ni.cache = nodes
-// 		ni.cacheIdx = 0
-// 		ni.page++
-// 		if len(nodes) < ni.size {
-// 			ni.finished = true
-// 		}
-// 	}
-// 	ni.cacheIdx++
-// 	return &ni.cache[ni.cacheIdx-1], nil
-// }
+func (ni *httpNodeIter) Next() (*Node, error) {
+	// check if there are still cached nodes
+	if ni.cacheIdx >= len(ni.cache) {
+		if ni.finished {
+			return nil, nil
+		}
+		// pull new data in cache
+		pager := Page(ni.page, ni.size)
+		filter := NodeFilter{}.WithProofs(ni.proofs)
+		nodes, err := ni.cl.NodeList(filter, pager)
+		if err != nil {
+			return nil, errors.Wrap(err, "could not get nodes")
+		}
+		if len(nodes) == 0 {
+			// no more nodes, iteration finished
+			return nil, nil
+		}
+		ni.cache = nodes
+		ni.cacheIdx = 0
+		ni.page++
+		if len(nodes) < ni.size {
+			ni.finished = true
+		}
+	}
+	ni.cacheIdx++
+	return &ni.cache[ni.cacheIdx-1], nil
+}
 
 type httpPhonebook struct {
 	*httpClient
@@ -863,4 +900,105 @@ func (p *httpPhonebook) Validate(id int64, message, signature string) (bool, err
 	}
 
 	return output.V, nil
+}
+
+// NodeFilter used to build a query for node list
+type NodeFilter struct {
+	farm    *int64
+	country *string
+	city    *string
+	cru     *int64
+	mru     *int64
+	sru     *int64
+	hru     *int64
+	proofs  *bool
+	deleted *bool
+}
+
+// WithFarm filter with farm
+func (n NodeFilter) WithFarm(id int64) NodeFilter {
+	n.farm = &id
+	return n
+}
+
+//WithCountry filter with country
+func (n NodeFilter) WithCountry(country string) NodeFilter {
+	n.country = &country
+	return n
+}
+
+//WithCity filter with city
+func (n NodeFilter) WithCity(city string) NodeFilter {
+	n.city = &city
+	return n
+}
+
+//WithCRU filter with CRU
+func (n NodeFilter) WithCRU(cru int64) NodeFilter {
+	n.cru = &cru
+	return n
+}
+
+// WithMRU filter with mru
+func (n NodeFilter) WithMRU(sru int64) NodeFilter {
+	n.sru = &sru
+	return n
+}
+
+// WithHRU filter with HRU
+func (n NodeFilter) WithHRU(hru int64) NodeFilter {
+	n.hru = &hru
+	return n
+}
+
+// WithProofs filter with proofs
+func (n NodeFilter) WithProofs(proofs bool) NodeFilter {
+	n.proofs = &proofs
+	return n
+}
+
+// WithDeleted filter with deleted nodes
+func (n NodeFilter) WithDeleted(deleted bool) NodeFilter {
+	n.deleted = &deleted
+	return n
+}
+
+// Apply fills query
+func (n NodeFilter) Apply(query url.Values) {
+
+	if n.farm != nil {
+		query.Set("farm", fmt.Sprint(*n.farm))
+	}
+
+	if n.country != nil {
+		query.Set("country", *n.country)
+	}
+
+	if n.city != nil {
+		query.Set("city", *n.city)
+	}
+
+	if n.cru != nil {
+		query.Set("cru", fmt.Sprint(*n.cru))
+	}
+
+	if n.mru != nil {
+		query.Set("mru", fmt.Sprint(*n.mru))
+	}
+
+	if n.sru != nil {
+		query.Set("sru", fmt.Sprint(*n.sru))
+	}
+
+	if n.hru != nil {
+		query.Set("hru", fmt.Sprint(*n.hru))
+	}
+
+	if n.proofs != nil {
+		query.Set("proofs", fmt.Sprint(*n.proofs))
+	}
+
+	if n.deleted != nil {
+		query.Set("deleted", fmt.Sprint(*n.deleted))
+	}
 }
