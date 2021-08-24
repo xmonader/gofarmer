@@ -208,7 +208,7 @@ func main() {
 
 	formFarmUpdate := &widget.Form{
 		Items: []*widget.FormItem{ // we can specify items in the constructor
-			{Text: "Owner ID", Widget: farmOwnerIdEntry},
+			{Text: "Owner ID", Widget: farmOwnerIdEntry, HintText: "Change to transfer farm ownership"},
 			{Text: "Farm ID", Widget: farmIdEntryUpdate},
 			{Text: "Farm Name", Widget: farmNameInputUpdate},
 			{Text: "TFT Address", Widget: tftAddressInputUpdate, HintText: "valid TFT address (56 characters)"},
