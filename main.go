@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -45,6 +46,8 @@ func main() {
 	myWindow := myApp.NewWindow("Go Farmer!!")
 	explorerUrl, _ := explorersUrls["Mainnet"]
 
+	threebotIdInput := widget.NewEntry()
+	threebotIdInput.Disable()
 	threebotNameInput := widget.NewEntry()
 	emailInput := widget.NewEntry()
 	wordsInput := widget.NewMultiLineEntry()
@@ -56,6 +59,7 @@ func main() {
 	errorsFarmLabel := widget.NewLabel("")
 	infoFarmLabel := widget.NewLabel("")
 
+	farmOwnerIdEntry := widget.NewEntry()
 	farmIdEntryUpdate := widget.NewEntry()
 	farmIdEntryUpdate.Disable()
 	farmNameInputUpdate := widget.NewEntry()
@@ -91,6 +95,7 @@ func main() {
 	if _, err = os.Stat(seedpath); !os.IsNotExist(err) {
 		userid.Load(seedpath)
 		threebotId = int(userid.ThreebotID)
+		threebotIdInput.SetText(fmt.Sprintf("%d", threebotId))
 		if expclient, err = NewClient(explorerUrl, userid); err == nil {
 			if u, err := expclient.Phonebook.Get(userid.ThreebotID); err == nil {
 				wordsInput.Text = userid.Mnemonic
@@ -109,6 +114,7 @@ func main() {
 
 	formIdentity := &widget.Form{
 		Items: []*widget.FormItem{ // we can specify items in the constructor
+			{Text: "3Bot ID", Widget: threebotIdInput, HintText: "3Bot ID"},
 			{Text: "3Bot Name", Widget: threebotNameInput, HintText: "should end with .3bot"},
 			{Text: "Email", Widget: emailInput},
 			{Text: "Words", Widget: wordsInput, HintText: "leave empty to generate"},
@@ -202,6 +208,7 @@ func main() {
 
 	formFarmUpdate := &widget.Form{
 		Items: []*widget.FormItem{ // we can specify items in the constructor
+			{Text: "Owner ID", Widget: farmOwnerIdEntry, HintText: "Change to transfer farm ownership"},
 			{Text: "Farm ID", Widget: farmIdEntryUpdate},
 			{Text: "Farm Name", Widget: farmNameInputUpdate},
 			{Text: "TFT Address", Widget: tftAddressInputUpdate, HintText: "valid TFT address (56 characters)"},
@@ -214,7 +221,12 @@ func main() {
 			errs := validateData(threebotNameInput.Text, emailInput.Text, farmNameInputUpdate.Text, tftAddressInputUpdate.Text)
 			errorsFarmLabelUpdate.Text = strings.Join(errs, "\n")
 			if len(errs) == 0 && threebotId > 0 {
-				if farm, err := updateFarm(expclient, farmsListData[farmToEditIdx].ID, farmNameInputUpdate.Text, emailInput.Text, tftAddressInputUpdate.Text, threebotId); err == nil {
+				farmOwnerIDAsInt, err := strconv.Atoi(farmOwnerIdEntry.Text)
+				if err != nil {
+					errorsFarmLabelUpdate.Text = fmt.Sprintf("Error while updating farm %s", err)
+					dialog.ShowError(fmt.Errorf(errorsFarmLabelUpdate.Text), myWindow)
+				}
+				if farm, err := updateFarm(expclient, farmsListData[farmToEditIdx].ID, int64(farmOwnerIDAsInt), farmNameInputUpdate.Text, emailInput.Text, tftAddressInputUpdate.Text, threebotId); err == nil {
 
 					infoFarmLabelUpdate.Text = fmt.Sprintf("farm with ID %d is updated", farm.ID)
 					dialog.ShowInformation("Farm updated!", infoFarmLabelUpdate.Text, myWindow)
@@ -241,6 +253,7 @@ func main() {
 		func(i binding.DataItem, o fyne.CanvasObject) {
 			o.(*widget.Label).Bind(i.(binding.String))
 		})
+
 	farmsList.OnSelected = func(id widget.ListItemID) {
 		formFarmUpdate.Show()
 		farmToEditIdx = int64(id)
@@ -255,13 +268,14 @@ func main() {
 				break
 			}
 		}
+		farmOwnerIdEntry.SetText(fmt.Sprintf("%d", farmsListData[id].ThreebotID))
 		farmIdEntryUpdate.SetText(fmt.Sprintf("%d", farmsListData[id].ID))
 		nodesListData, nodesNames = ListAllNodesAndNames(expclient, farmsListData[id].ID)
 		nodesBinding.Set(nodesNames)
 
 	}
 	scrolledFarmsList := container.NewVScroll(farmsList)
-	scrolledFarmsList.SetMinSize(fyne.NewSize(100, 400))
+	scrolledFarmsList.SetMinSize(fyne.NewSize(100, 300))
 
 	nodeDetailsLayout := container.NewVScroll(container.New(layout.NewFormLayout(),
 		widget.NewLabel("Node ID"), nodeId,
@@ -318,7 +332,7 @@ func main() {
 	scrolledNodesCont := container.NewVSplit(scrolledNodesList, nodeDetailsLayout)
 
 	// contScrolledList := container.NewVBox(container.NewPadded(), scrolledFarmsList)
-	scolledFarmsListCont := container.NewVBox(scrolledFarmsList, container.NewPadded(), formFarmUpdate)
+	scolledFarmsListCont := container.NewVSplit(scrolledFarmsList, formFarmUpdate)
 
 	formFarmUpdate.Resize(fyne.NewSize(700, 400))
 	formFarmUpdate.Hide()
@@ -421,7 +435,7 @@ func registerFarm(expclient *Client, name, email, tftAddress string, tid int) (F
 	return farm, nil
 }
 
-func updateFarm(expclient *Client, farmId int64, name, email, tftAddress string, tid int) (Farm, error) {
+func updateFarm(expclient *Client, farmId, ownerId int64, name, email, tftAddress string, tid int) (Farm, error) {
 	name = strings.TrimSpace(name)
 	email = strings.TrimSpace(email)
 	tftAddress = strings.TrimSpace(tftAddress)
@@ -431,7 +445,7 @@ func updateFarm(expclient *Client, farmId int64, name, email, tftAddress string,
 	farm := Farm{
 		Name:            name,
 		ID:              farmId,
-		ThreebotID:      int64(tid),
+		ThreebotID:      ownerId,
 		Email:           email,
 		WalletAddresses: addresses,
 	}
